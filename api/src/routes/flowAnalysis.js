@@ -525,7 +525,7 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
 
   const summary = {
     totalTransactions: data.length,
-    totalAmount: data.reduce((sum, row) => sum + getAmount(row), 0),
+    totalAmount: data.reduce((sum, row) => sum + Math.abs(getAmount(row)), 0),
     inTransactionCount,
     inTransactionAmount,
     outTransactionCount,
