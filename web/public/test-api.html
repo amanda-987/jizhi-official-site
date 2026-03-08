@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .loading {
+      background: #fff3cd;
+      color: #856404;
+    }
+    pre {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    button {
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 10px 0;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>API连接测试</h1>
+    
+    <div id="status" class="status loading">准备测试...</div>
+    
+    <button onclick="testConnection()">测试API连接</button>
+    <button onclick="loadData()">加载数据</button>
+    
+    <div id="result"></div>
+  </div>
+
+  <script>
+    async function testConnection() {
+      const statusDiv = document.getElementById('status');
+      const resultDiv = document.getElementById('result');
+      
+      statusDiv.className = 'status loading';
+      statusDiv.textContent = '正在测试API连接...';
+      resultDiv.innerHTML = '';
+      
+      try {
+        const response = await fetch('http://localhost:3001/api/flow-analysis/21');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        statusDiv.className = 'status success';
+        statusDiv.textContent = '✅ API连接成功！';
+        
+        resultDiv.innerHTML = `
+          <h3>响应数据:</h3>
+          <pre>${JSON.stringify(result, null, 2)}</pre>
+        `;
+      } catch (error) {
+        statusDiv.className = 'status error';
+        statusDiv.textContent = '❌ API连接失败: ' + error.message;
+        
+        resultDiv.innerHTML = `
+          <h3>错误详情:</h3>
+          <pre>${error.stack || error.message}</pre>
+        `;
+      }
+    }
+
+    async function loadData() {
+      const statusDiv = document.getElementById('status');
+      const resultDiv = document.getElementById('result');
+      
+      statusDiv.className = 'status loading';
+      statusDiv.textContent = '正在加载数据...';
+      resultDiv.innerHTML = '';
+      
+      try {
+        const response = await fetch('http://localhost:3001/api/flow-analysis/21');
+        const result = await response.json();
+        
+        if (result.code === 200 && result.data && result.data.length > 0) {
+          statusDiv.className = 'status success';
+          statusDiv.textContent = `✅ 成功加载 ${result.data.length} 个工作表的数据`;
+          
+          resultDiv.innerHTML = `
+            <h3>数据摘要:</h3>
+            ${result.data.map((analysis, index) => `
+              <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                <strong>工作表 ${index + 1}: ${analysis.user_identifier}</strong><br>
+                用户手机: ${analysis.user_phone_analysis?.length || 0} 个<br>
+                银行卡: ${analysis.user_bank_card_analysis?.length || 0} 张<br>
+                车辆: ${analysis.vehicle_analysis?.length || 0} 辆<br>
+                高频对手: ${analysis.high_frequency_counterparties?.length || 0} 个<br>
+                限制消费: ${Object.keys(analysis.restricted_consumption || {}).length} 类
+              </div>
+            `).join('')}
+          `;
+        } else {
+          statusDiv.className = 'status error';
+          statusDiv.textContent = '❌ 没有找到数据';
+        }
+      } catch (error) {
+        statusDiv.className = 'status error';
+        statusDiv.textContent = '❌ 加载数据失败: ' + error.message;
+        
+        resultDiv.innerHTML = `
+          <h3>错误详情:</h3>
+          <pre>${error.stack || error.message}</pre>
+        `;
+      }
+    }
+
+    // 自动测试连接
+    window.onload = function() {
+      testConnection();
+    };
+  </script>
+</body>
+</html>

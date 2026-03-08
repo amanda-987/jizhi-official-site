@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:3001;">
+    <title>CSP测试</title>
+  </head>
+  <body>
+    <h1>CSP测试页面</h1>
+    <div id="result"></div>
+    <script>
+      const resultDiv = document.getElementById('result')
+      
+      try {
+        eval('console.log("测试eval")')
+        resultDiv.innerHTML = '<p style="color: green;">✅ eval() 可用</p>'
+      } catch (e) {
+        resultDiv.innerHTML = '<p style="color: red;">❌ eval() 被阻止: ' + e.message + '</p>'
+      }
+      
+      resultDiv.innerHTML += '<p>当前CSP策略: ' + document.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute('content') + '</p>'
+    </script>
+  </body>
+</html>

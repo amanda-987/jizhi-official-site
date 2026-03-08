@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>完整数据分析展示</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .card h2 {
+        margin-top: 0;
+        color: #1a73e8;
+        border-bottom: 2px solid #1a73e8;
+        padding-bottom: 10px;
+      }
+      .section {
+        margin-bottom: 20px;
+      }
+      .section h3 {
+        color: #333;
+        margin-bottom: 10px;
+      }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .summary-item {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+      }
+      .summary-item .value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1a73e8;
+      }
+      .summary-item .label {
+        font-size: 14px;
+        color: #666;
+        margin-top: 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      th, td {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: left;
+        font-size: 13px;
+      }
+      th {
+        background: #1a73e8;
+        color: white;
+        font-weight: bold;
+      }
+      tr:nth-child(even) {
+        background: #f9f9f9;
+      }
+      tr:hover {
+        background: #e3f2fd;
+      }
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        margin-right: 5px;
+        margin-bottom: 5px;
+      }
+      .tag-blue { background: #e3f2fd; color: #1976d2; }
+      .tag-green { background: #e8f5e9; color: #388e3c; }
+      .tag-red { background: #ffebee; color: #d32f2f; }
+      .tag-orange { background: #fff3e0; color: #f57c00; }
+      .loading {
+        text-align: center;
+        padding: 40px;
+        font-size: 18px;
+        color: #666;
+      }
+      .error {
+        background: #ffebee;
+        border: 1px solid #ffcdd2;
+        color: #c62828;
+        padding: 15px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 style="text-align: center; color: #1a73e8; margin-bottom: 30px;">
+        极执网 - 流水分析结果
+      </h1>
+      
+      <div id="loading" class="loading">加载数据中...</div>
+      <div id="result"></div>
+    </div>
+
+    <script>
+      async function loadData() {
+        try {
+          const response = await fetch('http://localhost:3001/api/flow-analysis/21');
+          const result = await response.json();
+          
+          document.getElementById('loading').style.display = 'none';
+          
+          if (result.code === 200 && result.data && result.data.length > 0) {
+            const container = document.getElementById('result');
+            
+            result.data.forEach((analysis, index) => {
+              const card = document.createElement('div');
+              card.className = 'card';
+              
+              card.innerHTML = `
+                <h2>工作表 ${index + 1}: ${analysis.user_identifier || '未知用户'}</h2>
+                
+                <!-- 汇总信息 -->
+                <div class="section">
+                  <h3>📊 汇总信息</h3>
+                  <div class="summary-grid">
+                    <div class="summary-item">
+                      <div class="value">${analysis.summary?.totalTransactions || 0}</div>
+                      <div class="label">总交易笔数</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${formatCurrency(analysis.summary?.totalAmount || 0)}</div>
+                      <div class="label">总交易金额</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${analysis.summary?.inTransactionCount || 0}</div>
+                      <div class="label">入账笔数</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${formatCurrency(analysis.summary?.inTransactionAmount || 0)}</div>
+                      <div class="label">入账金额</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${analysis.summary?.outTransactionCount || 0}</div>
+                      <div class="label">出账笔数</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${formatCurrency(analysis.summary?.outTransactionAmount || 0)}</div>
+                      <div class="label">出账金额</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${analysis.summary?.rechargeCount || 0}</div>
+                      <div class="label">充值次数</div>
+                    </div>
+                    <div class="summary-item">
+                      <div class="value">${analysis.summary?.vehicleCount || 0}</div>
+                      <div class="label">车辆数量</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 用户手机号码 -->
+                ${analysis.user_phone_analysis && analysis.user_phone_analysis.length > 0 ? `
+                <div class="section">
+                  <h3>📱 用户手机号码 (${analysis.user_phone_analysis.length}个)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>手机号</th>
+                        <th>用户名</th>
+                        <th>用户ID</th>
+                        <th>充值总金额</th>
+                        <th>充值次数</th>
+                        <th>运营商</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${analysis.user_phone_analysis.map(phone => `
+                        <tr>
+                          <td><span class="tag tag-blue">${phone.phone}</span></td>
+                          <td>${phone.userName}</td>
+                          <td>${phone.userId}</td>
+                          <td><span class="tag tag-red">${formatCurrency(phone.amount)}</span></td>
+                          <td>${phone.count}</td>
+                          <td>${phone.operator}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ` : ''}
+                
+                <!-- 名下银行卡 -->
+                ${analysis.user_bank_card_analysis && analysis.user_bank_card_analysis.length > 0 ? `
+                <div class="section">
+                  <h3>💳 名下银行卡 (${analysis.user_bank_card_analysis.length}张)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>银行</th>
+                        <th>账号</th>
+                        <th>用户名</th>
+                        <th>用户ID</th>
+                        <th>交易次数</th>
+                        <th>总金额</th>
+                        <th>入账金额</th>
+                        <th>出账金额</th>
+                        <th>首次交易</th>
+                        <th>最后交易</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${analysis.user_bank_card_analysis.map(card => `
+                        <tr>
+                          <td><span class="tag tag-green">${card.bank}</span></td>
+                          <td>${maskAccount(card.account)}</td>
+                          <td>${card.userName}</td>
+                          <td>${card.userId}</td>
+                          <td>${card.transactionCount}</td>
+                          <td><span class="tag tag-red">${formatCurrency(card.totalAmount)}</span></td>
+                          <td><span class="tag tag-green">${formatCurrency(card.inAmount)}</span></td>
+                          <td><span class="tag tag-red">${formatCurrency(card.outAmount)}</span></td>
+                          <td>${formatDateTime(card.firstTransactionTime)}</td>
+                          <td>${formatDateTime(card.lastTransactionTime)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ` : ''}
+                
+                <!-- 车辆信息 -->
+                ${analysis.vehicle_analysis && analysis.vehicle_analysis.length > 0 ? `
+                <div class="section">
+                  <h3>🚗 车辆信息 (${analysis.vehicle_analysis.length}辆)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>车牌号</th>
+                        <th>出现次数</th>
+                        <th>消费场所</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${analysis.vehicle_analysis.map(vehicle => `
+                        <tr>
+                          <td><span class="tag tag-blue">${vehicle.plateNumber}</span></td>
+                          <td>${vehicle.count}</td>
+                          <td>${vehicle.locations?.slice(0, 5).join('、') || '无'}${vehicle.locations?.length > 5 ? '...' : ''}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ` : ''}
+                
+                <!-- 高频交易对手 -->
+                ${analysis.high_frequency_counterparties && analysis.high_frequency_counterparties.length > 0 ? `
+                <div class="section">
+                  <h3>👥 高频交易对手 (${analysis.high_frequency_counterparties.length}个)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>对手方名称</th>
+                        <th>对手方ID</th>
+                        <th>银行</th>
+                        <th>账号</th>
+                        <th>交易次数</th>
+                        <th>总金额</th>
+                        <th>入账金额</th>
+                        <th>出账金额</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${analysis.high_frequency_counterparties.slice(0, 10).map(counterparty => `
+                        <tr>
+                          <td><span class="tag tag-orange">${counterparty.name}</span></td>
+                          <td>${counterparty.id}</td>
+                          <td>${counterparty.bank}</td>
+                          <td>${maskAccount(counterparty.account)}</td>
+                          <td>${counterparty.count}</td>
+                          <td><span class="tag tag-red">${formatCurrency(counterparty.totalAmount)}</span></td>
+                          <td><span class="tag tag-green">${formatCurrency(counterparty.inAmount)}</span></td>
+                          <td><span class="tag tag-red">${formatCurrency(counterparty.outAmount)}</span></td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ` : ''}
+                
+                <!-- 顶级商户 -->
+                ${analysis.top_merchants && analysis.top_merchants.length > 0 ? `
+                <div class="section">
+                  <h3>🏪 顶级商户 (${analysis.top_merchants.length}个)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>商户名称</th>
+                        <th>交易次数</th>
+                        <th>总金额</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${analysis.top_merchants.map(merchant => `
+                        <tr>
+                          <td><span class="tag tag-blue">${merchant.name}</span></td>
+                          <td>${merchant.count}</td>
+                          <td><span class="tag tag-red">${formatCurrency(merchant.totalAmount)}</span></td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                ` : ''}
+                
+                <!-- 限制消费行为 -->
+                ${analysis.restricted_consumption && Object.keys(analysis.restricted_consumption).length > 0 ? `
+                <div class="section">
+                  <h3>⚠️ 限制消费行为分析</h3>
+                  
+                  <!-- 航班消费 -->
+                  ${analysis.restricted_consumption.flights && analysis.restricted_consumption.flights.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>✈️ 航班消费 (${analysis.restricted_consumption.flights.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.flights.map(flight => `
+                          <tr>
+                            <td>${formatDateTime(flight.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(flight.amount)}</span></td>
+                            <td>${flight.counterparty || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 酒店消费 -->
+                  ${analysis.restricted_consumption.hotels && analysis.restricted_consumption.hotels.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>🏨 酒店消费 (${analysis.restricted_consumption.hotels.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>酒店名称</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.hotels.map(hotel => `
+                          <tr>
+                            <td>${formatDateTime(hotel.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(hotel.amount)}</span></td>
+                            <td><span class="tag tag-blue">${hotel.location || '-'}</span></td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 餐厅消费 -->
+                  ${analysis.restricted_consumption.restaurants && analysis.restricted_consumption.restaurants.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>🍽️ 餐厅消费 (${analysis.restricted_consumption.restaurants.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                          <th>场所</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.restaurants.slice(0, 10).map(restaurant => `
+                          <tr>
+                            <td>${formatDateTime(restaurant.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(restaurant.amount)}</span></td>
+                            <td>${restaurant.counterparty || '-'}</td>
+                            <td>${restaurant.location || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 娱乐消费 -->
+                  ${analysis.restricted_consumption.entertainment && analysis.restricted_consumption.entertainment.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>🎭 娱乐消费 (${analysis.restricted_consumption.entertainment.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                          <th>场所</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.entertainment.slice(0, 10).map(ent => `
+                          <tr>
+                            <td>${formatDateTime(ent.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(ent.amount)}</span></td>
+                            <td>${ent.counterparty || '-'}</td>
+                            <td>${ent.location || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 旅游消费 -->
+                  ${analysis.restricted_consumption.travel && analysis.restricted_consumption.travel.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>🌍 旅游消费 (${analysis.restricted_consumption.travel.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.travel.slice(0, 10).map(travel => `
+                          <tr>
+                            <td>${formatDateTime(travel.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(travel.amount)}</span></td>
+                            <td>${travel.counterparty || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 保险消费 -->
+                  ${analysis.restricted_consumption.insurance && analysis.restricted_consumption.insurance.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>🛡️ 保险消费 (${analysis.restricted_consumption.insurance.length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.insurance.map(ins => `
+                          <tr>
+                            <td>${formatDateTime(ins.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(ins.amount)}</span></td>
+                            <td>${ins.counterparty || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                  
+                  <!-- 奢侈品消费 -->
+                  ${analysis.restricted_consumption.luxury && analysis.restricted_consumption.luxury.length > 0 ? `
+                  <div style="margin-bottom: 20px;">
+                    <h4>💎 奢侈品消费 (${analysis.restricted_consumption.luxury.filter(lux => !isPersonalMerchant(lux.counterparty)).length}笔)</h4>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>金额</th>
+                          <th>对手方</th>
+                          <th>备注（购买商品）</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${analysis.restricted_consumption.luxury.filter(lux => !isPersonalMerchant(lux.counterparty)).slice(0, 10).map(lux => `
+                          <tr>
+                            <td>${formatDateTime(lux.time)}</td>
+                            <td><span class="tag tag-red">${formatCurrency(lux.amount)}</span></td>
+                            <td>${lux.counterparty || '-'}</td>
+                            <td>${lux.remark || '-'}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                  ` : ''}
+                </div>
+                ` : ''}
+              `;
+              
+              container.appendChild(card);
+            });
+          } else {
+            document.getElementById('result').innerHTML = '<p style="text-align: center; color: #666;">没有分析结果数据</p>';
+          }
+        } catch (error) {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('result').innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+          console.error('加载失败:', error);
+        }
+      }
+
+      function formatCurrency(amount) {
+        if (!amount) return '¥0.00';
+        return '¥' + Math.abs(amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatDateTime(dateStr) {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleString('zh-CN');
+      }
+
+      function maskAccount(account) {
+        if (!account) return '-';
+        return account;
+      }
+
+      function isPersonalMerchant(counterparty) {
+        if (!counterparty) return false;
+        
+        const personalKeywords = [
+          '个人', '个体', '小店', '摊位', '小卖部', '便利店',
+          '超市', '商店', '店铺', '门市', '门店',
+          '工作室', '工作室', '工作室'
+        ];
+        
+        const counterpartyLower = counterparty.toLowerCase();
+        
+        if (counterpartyLower.length <= 4) return true;
+        
+        return personalKeywords.some(keyword => counterpartyLower.includes(keyword));
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
