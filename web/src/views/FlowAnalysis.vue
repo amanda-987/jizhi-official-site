@@ -656,24 +656,25 @@ const generatePDFReport = async () => {
 
   generatingPDF.value = true
   try {
-    // 获取所有用户名
-    const userNames = analysisResults.value.map((analysis, index) => {
+    // 获取所有真实用户名并去重
+    const userNames = Array.from(new Set(analysisResults.value.map((analysis) => {
       let userName = '未知用户'
       if (analysis.userPhoneAnalysis && analysis.userPhoneAnalysis.length > 0) {
-        userName = analysis.userPhoneAnalysis[0].userName || analysis.user_identifier || `用户${index + 1}`
-      } else {
-        userName = analysis.user_identifier || `用户${index + 1}`
+        // 优先使用真实用户名，不使用工作表名
+        if (analysis.userPhoneAnalysis[0].userName) {
+          userName = analysis.userPhoneAnalysis[0].userName
+        }
       }
       return userName
-    })
+    }))).filter(name => name !== '未知用户')
 
     // 生成报告标题
-    const reportTitle = userNames.length === 1 
+    const reportTitle = userNames.length > 0 
       ? `${userNames[0]}流水报告` 
-      : `${userNames.join('、')}流水报告`
+      : '流水报告'
 
     // 使用纯 HTML 方式导出 PDF
-    exportPDFWithHTML(analysisResults.value, reportTitle)
+    exportPDFWithHTML(analysisResults.value, reportTitle, userNames[0])
     
     ElMessage.success('报告已在新窗口打开，请点击"打印/保存为PDF"按钮导出')
   } catch (error: any) {
@@ -686,7 +687,7 @@ const generatePDFReport = async () => {
 }
 
 // 使用纯 HTML 方式导出 PDF（在新窗口中打开，用户可选择保存为 PDF）
-const exportPDFWithHTML = (analysisResults: any[], reportTitle: string) => {
+const exportPDFWithHTML = (analysisResults: any[], reportTitle: string, unifiedUserName: string = '未知用户') => {
   // 生成 HTML 内容
   const htmlContent = `
     <!DOCTYPE html>
@@ -732,23 +733,52 @@ const exportPDFWithHTML = (analysisResults: any[], reportTitle: string) => {
       </div>
       <h1>${reportTitle}</h1>
       <hr>
+      ${
+        (() => {
+          const totalInCount = analysisResults.reduce((sum, a) => sum + (a.summary?.inTransactionCount || 0), 0)
+          const totalOutCount = analysisResults.reduce((sum, a) => sum + (a.summary?.outTransactionCount || 0), 0)
+          const totalInAmount = analysisResults.reduce((sum, a) => sum + (a.summary?.inTransactionAmount || 0), 0)
+          const totalOutAmount = analysisResults.reduce((sum, a) => sum + Math.abs(a.summary?.outTransactionAmount || 0), 0)
+          const sheetNames = analysisResults.map((a, i) => a.user_identifier || `工作表${i+1}`).join('、')
+          
+          return `
+            <div class="section">
+              <h2>总体汇总</h2>
+              <table>
+                <tr><th>指标</th><th>数值</th></tr>
+                <tr><td>用户名</td><td>${unifiedUserName}</td></tr>
+                <tr><td>账户数</td><td>${analysisResults.length}</td></tr>
+                <tr><td>工作表名称</td><td>${sheetNames}</td></tr>
+                <tr><td>出入账总笔数</td><td>${totalInCount + totalOutCount}</td></tr>
+                <tr><td>交易总金额</td><td>¥${(totalInAmount + totalOutAmount).toFixed(2)}</td></tr>
+                <tr><td>入账总笔数</td><td>${totalInCount}</td></tr>
+                <tr><td>入账总金额</td><td>¥${totalInAmount.toFixed(2)}</td></tr>
+                <tr><td>出账总笔数</td><td>${totalOutCount}</td></tr>
+                <tr><td>出账总金额</td><td>¥${totalOutAmount.toFixed(2)}</td></tr>
+              </table>
+            </div>
+          `
+        })()
+      }
       ${analysisResults.map((analysis, index) => {
-        const userName = analysis.userPhoneAnalysis && analysis.userPhoneAnalysis.length > 0 
-          ? analysis.userPhoneAnalysis[0].userName || analysis.user_identifier || `用户${index + 1}`
-          : analysis.user_identifier || `用户${index + 1}`
+        const sheetName = analysis.user_identifier || `工作表${index + 1}`
+        const inCount = analysis.summary?.inTransactionCount || 0
+        const outCount = analysis.summary?.outTransactionCount || 0
+        const inAmount = analysis.summary?.inTransactionAmount || 0
+        const outAmount = Math.abs(analysis.summary?.outTransactionAmount || 0)
         
         let sectionHtml = `
-          <div class="section ${index > 0 ? 'page-break' : ''}">
-            <h2>${userName} - 流水分析</h2>
+          <div class="section page-break">
+            <h2>${unifiedUserName}${sheetName} - 流水分析</h2>
             <h3>汇总信息</h3>
             <table>
               <tr><th>指标</th><th>数值</th></tr>
-              <tr><td>总交易笔数</td><td>${analysis.summary?.totalTransactions || 0}</td></tr>
-              <tr><td>总交易金额</td><td>¥${(analysis.summary?.totalAmount || 0).toFixed(2)}</td></tr>
-              <tr><td>入账笔数</td><td>${analysis.summary?.inTransactionCount || 0}</td></tr>
-              <tr><td>入账金额</td><td>¥${(analysis.summary?.inTransactionAmount || 0).toFixed(2)}</td></tr>
-              <tr><td>出账笔数</td><td>${analysis.summary?.outTransactionCount || 0}</td></tr>
-              <tr><td>出账金额</td><td>¥${(analysis.summary?.outTransactionAmount || 0).toFixed(2)}</td></tr>
+              <tr><td>出入账总笔数</td><td>${inCount + outCount}</td></tr>
+              <tr><td>交易总金额</td><td>¥${(inAmount + outAmount).toFixed(2)}</td></tr>
+              <tr><td>入账总笔数</td><td>${inCount}</td></tr>
+              <tr><td>入账总金额</td><td>¥${inAmount.toFixed(2)}</td></tr>
+              <tr><td>出账总笔数</td><td>${outCount}</td></tr>
+              <tr><td>出账总金额</td><td>¥${outAmount.toFixed(2)}</td></tr>
               <tr><td>充值笔数</td><td>${analysis.summary?.rechargeCount || 0}</td></tr>
               <tr><td>车辆数量</td><td>${analysis.vehicleAnalysis?.length || 0}</td></tr>
             </table>
@@ -899,7 +929,7 @@ const exportPDFWithHTML = (analysisResults: any[], reportTitle: string) => {
 }
 
 // 使用新窗口打印方式生成 PDF
-const generatePDFWithNewWindow = (analysisResults: any[], reportTitle: string) => {
+const generatePDFWithNewWindow = (analysisResults: any[], reportTitle: string, unifiedUserName: string = '未知用户') => {
   // 生成 HTML 内容
   let htmlContent = `
     <!DOCTYPE html>
@@ -1000,13 +1030,11 @@ const generatePDFWithNewWindow = (analysisResults: any[], reportTitle: string) =
   `
   
   analysisResults.forEach((analysis, index) => {
-    const userName = analysis.userPhoneAnalysis && analysis.userPhoneAnalysis.length > 0 
-      ? analysis.userPhoneAnalysis[0].userName || analysis.user_identifier || `用户${index + 1}`
-      : analysis.user_identifier || `用户${index + 1}`
+    const sheetName = analysis.user_identifier || `工作表${index + 1}`
     
     htmlContent += `
       <div class="section ${index > 0 ? 'page-break' : ''}">
-        <h2>${userName} - 流水分析</h2>
+        <h2>${unifiedUserName}${sheetName} - 流水分析</h2>
         
         <h3>汇总信息</h3>
         <table>
