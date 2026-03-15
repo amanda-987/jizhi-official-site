@@ -45,7 +45,7 @@ router.post('/analyze/:fileId', async (req, res) => {
       console.log(`\n========== 处理工作表: ${sheetName} ==========`)
       
       const worksheet = workbook.Sheets[sheetName]
-      const data = xlsx.utils.sheet_to_json(worksheet)
+      const data = xlsx.utils.sheet_to_json(worksheet, { defval: '', raw: false })
 
       console.log(`工作表 ${sheetName} 数据行数: ${data.length}`)
 
@@ -59,7 +59,11 @@ router.post('/analyze/:fileId', async (req, res) => {
 
       const isValidTransactionSheet = firstRowKeys.some(key => 
         key.includes('用户ID') || key.includes('交易时间') || key.includes('交易金额') ||
-        key.includes('金额') || key.includes('时间') || key.includes('对手')
+        key.includes('金额') || key.includes('时间') || key.includes('对手') ||
+        key.includes('借贷') || key.includes('摘要') || key.includes('收支') ||
+        key.includes('交易类型') || key.includes('交易日期') || key.includes('发生额') ||
+        key.includes('对方户名') || key.includes('对方账号') || key.includes('交易摘要') ||
+        key.includes('用户银行卡号')
       )
 
       const isAccountBindingSheet = firstRowKeys.some(key => 
@@ -246,7 +250,8 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
     entertainment: [],
     travel: [],
     insurance: [],
-    luxury: []
+    luxury: [],
+    realEstate: []
   }
 
   const isPersonalMerchant = (counterparty) => {
@@ -460,6 +465,12 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
       restrictedConsumption.hotels.push({ time, amount, location: hotelName || counterparty })
     }
     
+    // 餐饮消费
+    if (text.includes('餐饮') || text.includes('饭店') || text.includes('餐厅') || 
+        text.includes('火锅') || text.includes('烧烤') || text.includes('美食')) {
+      restrictedConsumption.restaurants.push({ time, amount, counterparty, location: counterparty })
+    }
+    
     if (text.includes('ktv') || text.includes('酒吧') || text.includes('娱乐')) {
       const venueName = extractEntertainmentVenue(counterparty, remark)
       if (venueName) {
@@ -475,6 +486,12 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
       restrictedConsumption.insurance.push({ time, amount, counterparty, location: counterparty })
     }
 
+    // 房地产/装修
+    if (text.includes('房地产') || text.includes('装修') || text.includes('建材') || 
+        text.includes('家居') || text.includes('房产') || text.includes('物业')) {
+      restrictedConsumption.realEstate.push({ time, amount, counterparty, location: counterparty })
+    }
+
     const counterpartyText = (counterparty || '').toLowerCase()
     const remarkText = (remark || '').toLowerCase()
     
@@ -486,7 +503,7 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
   })
 
   const highFrequencyCounterparties = Array.from(counterpartyMap.values())
-    .sort((a, b) => b.totalAmount - a.totalAmount)
+    .sort((a, b) => b.count - a.count)
     .slice(0, 15)
 
   const topMerchants = Array.from(merchantMap.values())
@@ -561,6 +578,14 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
     luxury: {
       count: restrictedConsumption.luxury.length,
       totalAmount: restrictedConsumption.luxury.reduce((sum, item) => sum + Math.abs(item.amount), 0)
+    },
+    realEstate: {
+      count: restrictedConsumption.realEstate.length,
+      totalAmount: restrictedConsumption.realEstate.reduce((sum, item) => sum + Math.abs(item.amount), 0)
+    },
+    restaurants: {
+      count: restrictedConsumption.restaurants.length,
+      totalAmount: restrictedConsumption.restaurants.reduce((sum, item) => sum + Math.abs(item.amount), 0)
     }
   }
 
@@ -580,14 +605,22 @@ function analyzeFlowData(data, bankCardMap = new Map()) {
 function getAmount(row) {
   const keys = Object.keys(row)
   let amount = 0
-  let amountField = null
+  
+  const parseAmount = (val) => {
+    if (typeof val === 'number') return val
+    if (typeof val === 'string') {
+      const cleaned = val.replace(/,/g, '').replace(/，/g, '').trim()
+      const num = parseFloat(cleaned)
+      return isNaN(num) ? 0 : num
+    }
+    return 0
+  }
   
   for (const key of keys) {
     if (key.includes('交易金额(分)')) {
-      const value = parseFloat(row[key])
-      if (!isNaN(value)) {
+      const value = parseAmount(row[key])
+      if (value !== 0) {
         amount = value / 100
-        amountField = key
         break
       }
     }
@@ -595,11 +628,10 @@ function getAmount(row) {
   
   if (amount === 0) {
     for (const key of keys) {
-      if (key.includes('交易金额(元)') || key.includes('金额') || key.includes('Amount') || key.includes('amount')) {
-        const value = parseFloat(row[key])
-        if (!isNaN(value)) {
+      if (key.includes('交易金额(元)') || key.includes('金额') || key.includes('Amount') || key.includes('amount') || key.includes('发生额')) {
+        const value = parseAmount(row[key])
+        if (value !== 0) {
           amount = value
-          amountField = key
           break
         }
       }
@@ -608,11 +640,11 @@ function getAmount(row) {
   
   if (amount === 0) return 0
   
-  const debitCreditType = row['借贷类型'] || row['借贷'] || ''
+  const debitCreditType = row['借贷类型'] || row['借贷'] || row['收支'] || row['收支类型'] || ''
   
-  if (debitCreditType === '出' || debitCreditType === '支出' || debitCreditType === '借') {
+  if (debitCreditType === '出' || debitCreditType === '支出' || debitCreditType === '借' || debitCreditType === '支') {
     return -Math.abs(amount)
-  } else if (debitCreditType === '入' || debitCreditType === '收入' || debitCreditType === '贷') {
+  } else if (debitCreditType === '入' || debitCreditType === '收入' || debitCreditType === '贷' || debitCreditType === '收') {
     return Math.abs(amount)
   }
   
@@ -622,7 +654,7 @@ function getAmount(row) {
 function getCounterparty(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('对手侧账户名称') || key.includes('对手') && key.includes('名称') || key.includes('对方') && key.includes('名称') || key.includes('Counterparty') && key.includes('Name')) {
+    if (key.includes('对手侧账户名称') || (key.includes('对手') && key.includes('名称')) || (key.includes('对方') && key.includes('名称')) || (key.includes('Counterparty') && key.includes('Name'))) {
       return row[key] || ''
     }
   }
@@ -632,7 +664,7 @@ function getCounterparty(row) {
 function getCounterpartyId(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('对手方ID') || key.includes('对方ID') || key.includes('对手') && key.includes('ID') || key.includes('Counterparty') && key.includes('ID')) {
+    if (key.includes('对手方ID') || key.includes('对方ID') || (key.includes('对手') && key.includes('ID')) || (key.includes('Counterparty') && key.includes('ID'))) {
       return row[key] || ''
     }
   }
@@ -642,7 +674,7 @@ function getCounterpartyId(row) {
 function getCounterpartyBank(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('对手方银行') || key.includes('对方银行') || key.includes('对手') && key.includes('银行') || key.includes('Counterparty') && key.includes('Bank')) {
+    if (key.includes('对手方银行') || key.includes('对方银行') || (key.includes('对手') && key.includes('银行')) || (key.includes('Counterparty') && key.includes('Bank'))) {
       return row[key] || ''
     }
   }
@@ -652,7 +684,7 @@ function getCounterpartyBank(row) {
 function getCounterpartyAccount(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('对手方账号') || key.includes('对方账号') || key.includes('对手') && key.includes('账号') || key.includes('Counterparty') && key.includes('Account')) {
+    if (key.includes('对手方账号') || key.includes('对方账号') || (key.includes('对手') && key.includes('账号')) || (key.includes('Counterparty') && key.includes('Account'))) {
       return row[key] || ''
     }
   }
@@ -765,7 +797,7 @@ function getAccount(row) {
 function getUserName(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('用户侧账号名称') || key.includes('用户') && key.includes('名称') || key.includes('用户名') || key.includes('userName') || key.includes('username') || key.includes('User') && key.includes('Name')) {
+    if (key.includes('用户侧账号名称') || (key.includes('用户') && key.includes('名称')) || key.includes('用户名') || key.includes('userName') || key.includes('username') || (key.includes('User') && key.includes('Name'))) {
       return row[key] || ''
     }
   }
@@ -775,7 +807,7 @@ function getUserName(row) {
 function getUserId(row) {
   const keys = Object.keys(row)
   for (const key of keys) {
-    if (key.includes('用户ID') || key.includes('用户') && key.includes('ID') || key.includes('userId') || key.includes('userid') || key.includes('User') && key.includes('ID')) {
+    if (key.includes('用户ID') || (key.includes('用户') && key.includes('ID')) || key.includes('userId') || key.includes('userid') || (key.includes('User') && key.includes('ID'))) {
       return row[key] || ''
     }
   }
